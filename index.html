@@ -84,26 +84,28 @@ document.getElementById("best").textContent = best;
     }
 
     function endSession() {
-      document.getElementById("buyBtn").disabled = true;
-      document.getElementById("sellBtn").disabled = true;
+  document.getElementById("buyBtn").disabled = true;
+  document.getElementById("sellBtn").disabled = true;
 
-      let score = Math.max(0, 100 - violations * 25);
-      if (score > best) {
-  best = score;
-  localStorage.setItem("best", best);
-  document.getElementById("best").textContent = best;
+  let score = Math.max(0, 100 - violations * 25);
+  if (score > best) {
+    best = score;
+    localStorage.setItem("best", best);
+    document.getElementById("best").textContent = best;
+  }
+
+  let diff = balance - 1000;
+  let text = "Сессия окончена. Итог: " + diff + " $. Оценка дисциплины: " + score + " из 100.";
+
+  if (diff > 0 && violations > 0) {
+    text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
+  }
+  document.getElementById("summary").textContent = text;
+
+  if (violations === 0) {
+    document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
+  }
 }
-      let diff = balance - 1000;
-      let text = "Сессия окончена. Итог: " + diff + " $. Оценка дисциплины: " + score + " из 100.";
-
-      if (diff > 0 && violations > 0) {
-        text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
-      }
-      document.getElementById("summary").textContent = text;
-     }
-     if (violations === 0) {
-     document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
-    }
      function trade(direction) {
       let amount = Number(document.getElementById("amount").value);
       let stop = Number(document.getElementById("stop").value);
