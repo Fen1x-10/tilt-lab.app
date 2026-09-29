@@ -2,23 +2,23 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tilt Lab</title>
-    <style>
-  body { max-width: 380px; margin: 0 auto; padding: 16px; }
-  h1 { margin-bottom: 4px; }
-  button {
-    background: #4ade80; color: #111; border: none; border-radius: 8px;
-    padding: 10px 14px; margin: 4px; font-size: 15px; font-weight: bold; cursor: pointer;
-  }
-  #sellBtn { background: #f87171; }
-  button:disabled, #sellBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
-  input {
-    width: 80px; padding: 6px; border-radius: 6px; border: 1px solid #444;
-    background: #1b1b1b; color: white; text-align: center; font-size: 16px;
-  }
-  canvas { max-width: 100%; }
-</style>
+  <style>
+    body { max-width: 380px; margin: 0 auto; padding: 16px; }
+    h1 { margin-bottom: 4px; }
+    button {
+      background: #4ade80; color: #111; border: none; border-radius: 8px;
+      padding: 10px 14px; margin: 4px; font-size: 15px; font-weight: bold; cursor: pointer;
+    }
+    #sellBtn { background: #f87171; }
+    button:disabled, #sellBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
+    input {
+      width: 80px; padding: 6px; border-radius: 6px; border: 1px solid #444;
+      background: #1b1b1b; color: white; text-align: center; font-size: 16px;
+    }
+    canvas { max-width: 100%; }
+  </style>
 </head>
 <body style="background:#111; color:white; font-family:sans-serif; text-align:center;">
 
@@ -26,8 +26,9 @@
   <p>Депозит: <span id="balance">1000</span> $</p>
   <p>Цена актива: <span id="price">100.0</span></p>
   <canvas id="chart" width="320" height="160" style="background:#1b1b1b; border-radius:8px;"></canvas>
-<p>Размер сделки: <input id="amount" type="number" value="100" style="width:80px; background:#1b1b1b; color:white; border:1px solid #444; border-radius:6px; padding:6px; text-align:center; font-size:16px;"> $</p>
-<p>Стоп-лосс: <input id="stop" type="number" value="2" style="width:80px; background:#1b1b1b; color:white; border:1px solid #444; border-radius:6px; padding:6px; text-align:center; font-size:16px;"> %</p>
+  <p id="summary" style="font-weight:bold;"></p>
+  <p>Размер сделки: <input id="amount" type="number" value="100"> $</p>
+  <p>Стоп-лосс: <input id="stop" type="number" value="2"> %</p>
   <p>Сделок осталось: <span id="tradesLeft">10</span></p>
   <p>Нарушений правил: <span id="violations">0</span></p>
   <p>Лучшая оценка дисциплины: <span id="best">0</span></p>
@@ -39,7 +40,6 @@
   <p id="achievement" style="color:gold;"></p>
   <p id="achievement2" style="color:gold;"></p>
   <p id="achievement3" style="color:gold;"></p>
-  <p id="summary" style="font-weight:bold;"></p>
 
   <script>
     let balance = 1000;
@@ -51,7 +51,7 @@
     let lastAmount = 0;
     let trend = 0;
     let best = Number(localStorage.getItem("best")) || 0;
-document.getElementById("best").textContent = best;
+    document.getElementById("best").textContent = best;
 
     function drawChart() {
       let canvas = document.getElementById("chart");
@@ -84,29 +84,30 @@ document.getElementById("best").textContent = best;
     }
 
     function endSession() {
-  document.getElementById("buyBtn").disabled = true;
-  document.getElementById("sellBtn").disabled = true;
+      document.getElementById("buyBtn").disabled = true;
+      document.getElementById("sellBtn").disabled = true;
 
-  let score = Math.max(0, 100 - violations * 25);
-  if (score > best) {
-    best = score;
-    localStorage.setItem("best", best);
-    document.getElementById("best").textContent = best;
-  }
+      let score = Math.max(0, 100 - violations * 25);
+      if (score > best) {
+        best = score;
+        localStorage.setItem("best", best);
+        document.getElementById("best").textContent = best;
+      }
 
-  let diff = balance - 1000;
-  let text = "Сессия окончена. Итог: " + diff + " $. Оценка дисциплины: " + score + " из 100.";
+      let diff = balance - 1000;
+      let text = "Сессия окончена. Итог: " + diff + " $. Оценка дисциплины: " + score + " из 100.";
 
-  if (diff > 0 && violations > 0) {
-    text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
-  }
-  document.getElementById("summary").textContent = text;
+      if (diff > 0 && violations > 0) {
+        text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
+      }
+      document.getElementById("summary").textContent = text;
 
-  if (violations === 0) {
-    document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
-  }
-}
-     function trade(direction) {
+      if (violations === 0) {
+        document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
+      }
+    }
+
+    function trade(direction) {
       let amount = Number(document.getElementById("amount").value);
       let stop = Number(document.getElementById("stop").value);
 
@@ -117,27 +118,33 @@ document.getElementById("best").textContent = best;
 
       document.getElementById("message").textContent = "";
 
-    let warnings = [];
+      if (amount > balance) {
+        amount = balance;
+      }
 
-if (stop <= 0) {
-  warnings.push("⚠ Нарушение: сделка без стоп-лосса!");
-  document.getElementById("achievement2").textContent = "🏆 Ачивка: Стоп? Не слышал!";
-}
+      let warnings = [];
 
-if (amount > balance * 0.2) {
-  warnings.push("⚠ Нарушение: сделка больше 20% депозита!");
-}
-if (lastProfit < 0 && amount > lastAmount) {
-  warnings.push("⚠ Нарушение: увеличил сделку после убытка (реванш)!");
-}
-if (warnings.length > 0) {
-  violations = violations + warnings.length;
-  document.getElementById("violations").textContent = violations;
-  document.getElementById("message").innerHTML = warnings.join("<br>");
-}
+      if (stop <= 0) {
+        warnings.push("⚠ Нарушение: сделка без стоп-лосса!");
+        document.getElementById("achievement2").textContent = "🏆 Ачивка: Стоп? Не слышал!";
+      }
+
+      if (amount > balance * 0.2) {
+        warnings.push("⚠ Нарушение: сделка больше 20% депозита!");
+      }
+
+      if (lastProfit < 0 && amount > lastAmount) {
+        warnings.push("⚠ Нарушение: увеличил сделку после убытка (реванш)!");
+      }
+
+      if (warnings.length > 0) {
+        violations = violations + warnings.length;
+        document.getElementById("violations").textContent = violations;
+        document.getElementById("message").innerHTML = warnings.join("<br>");
+      }
 
       trend = trend * 0.7 + (Math.random() * 2 - 1);
-let change = trend * 1.5 + (Math.random() * 2 - 1);
+      let change = trend * 1.5 + (Math.random() * 2 - 1);
 
       let move = change;
       if (direction === "sell") {
@@ -162,6 +169,7 @@ let change = trend * 1.5 + (Math.random() * 2 - 1);
       lastProfit = profit;
       lastAmount = amount;
       tradesLeft = tradesLeft - 1;
+
       document.getElementById("balance").textContent = balance;
       document.getElementById("price").textContent = price.toFixed(1);
       document.getElementById("tradesLeft").textContent = tradesLeft;
@@ -188,9 +196,9 @@ let change = trend * 1.5 + (Math.random() * 2 - 1);
       prices = [100];
       violations = 0;
       tradesLeft = 10;
-      trend = 0;
       lastProfit = 0;
       lastAmount = 0;
+      trend = 0;
       document.getElementById("balance").textContent = balance;
       document.getElementById("price").textContent = "100.0";
       document.getElementById("tradesLeft").textContent = "10";
