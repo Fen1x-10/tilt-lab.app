@@ -16,7 +16,12 @@
     }
     #sellBtn { background: #f87171; }
     #closeBtn { background: #fbbf24; }
-    button:disabled, #sellBtn:disabled, #closeBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
+    #endBtn { background: #93c5fd; }
+    .lev { background: #2a2a2a; color: white; padding: 8px 12px; border: 2px solid transparent; }
+    .lev.active { border-color: #facc15; color: #facc15; }
+    button:disabled, #sellBtn:disabled, #closeBtn:disabled, #endBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
+    .lev:disabled { background: #2a2a2a; color: #777; }
+    .lev.active:disabled { border-color: #8a7a1a; color: #a39a4a; }
     input {
       width: 80px; padding: 6px; border-radius: 6px; border: 1px solid #444;
       background: #1b1b1b; color: white; text-align: center; font-size: 16px;
@@ -56,8 +61,10 @@
         <li>Всегда ставь стоп-лосс.</li>
         <li>Не рискуй больше 20% депозита в одной сделке.</li>
         <li>Не увеличивай сделку после убытка, чтобы отыграться. Это и есть тильт.</li>
+        <li>Не бери плечо выше x5: при большом плече рынок выбивает из сделки за секунды.</li>
       </ul>
-      <p>Нажми «Купить» или «Продать»: сделка откроется, и график пойдёт дальше свеча за свечой. Закрой её сам или её закроет стоп-лосс. В сессии 10 сделок, а оценка зависит не от прибыли, а от соблюдения правил.</p>
+      <p>График идёт всё время, как на бирже, и не ждёт тебя. Нажми «Купить» или «Продать», когда решишь, и закрой сделку сам, или её закроет стоп-лосс. Если цена дойдёт до линии ликвидации, залог сгорит целиком.</p>
+      <p>Сессия идёт, пока ты не нажмёшь «Завершить сессию» или не потеряешь весь депозит. Оценка зависит не от прибыли, а от соблюдения правил.</p>
       <p>График взят из реальной истории крипторынка. Какой это актив и когда это было, ты узнаешь в конце.</p>
       <p class="note">Это учебная игра без реальных денег. Прошлые результаты не гарантируют будущих. Игра не является инвестиционной рекомендацией.</p>
       <div style="text-align:center;"><button onclick="closeWelcome()">Начать</button></div>
@@ -68,18 +75,25 @@
   <p>Депозит: <span id="balance">1000</span> $</p>
   <p>Цена актива: <span id="price">100.0</span></p>
   <canvas id="chart" width="640" height="360" style="background:#1b1b1b; border-radius:8px;"></canvas>
-  <p id="live" style="min-height:1.2em; color:#e5e7eb; font-size:14px;"></p>
+  <p id="live" style="min-height:2.6em; color:#e5e7eb; font-size:14px; white-space:pre-line;"></p>
   <p id="summary" style="font-weight:bold;"></p>
   <p id="reveal" style="color:#facc15;"></p>
   <p id="review" style="color:tomato;"></p>
-  <p>Размер сделки: <input id="amount" type="number" value="100"> $</p>
+  <p>Размер сделки (залог): <input id="amount" type="number" value="100"> $</p>
   <p>Стоп-лосс: <input id="stop" type="number" value="2"> %</p>
-  <p>Сделок осталось: <span id="tradesLeft">10</span></p>
+  <p>Плечо:
+    <button class="lev active" data-lev="1" onclick="setLeverage(1)">x1</button>
+    <button class="lev" data-lev="2" onclick="setLeverage(2)">x2</button>
+    <button class="lev" data-lev="5" onclick="setLeverage(5)">x5</button>
+    <button class="lev" data-lev="10" onclick="setLeverage(10)">x10</button>
+  </p>
+  <p>Сделок: <span id="tradesDone">0</span></p>
   <p>Нарушений правил: <span id="violations">0</span></p>
   <p>Лучшая оценка дисциплины: <span id="best">0</span></p>
   <button id="buyBtn" onclick="openPosition('buy')">Купить (жду роста)</button>
   <button id="sellBtn" onclick="openPosition('sell')">Продать (жду падения)</button>
   <button id="closeBtn" onclick="closeManual()" disabled>Закрыть сделку</button>
+  <button id="endBtn" onclick="endSession('manual')">Завершить сессию</button>
   <button onclick="restart()">Начать заново</button>
   <p id="message" style="color:tomato;"></p>
   <p id="result"></p>
@@ -87,6 +101,7 @@
   <p id="achievement2" style="color:gold;"></p>
   <p id="achievement3" style="color:gold;"></p>
   <p id="achievement4" style="color:gold;"></p>
+  <p id="achievement5" style="color:gold;"></p>
   <p class="footer-note">
     Учебный тренажёр. Исторические данные крипторынка. Не инвестиционная рекомендация.<br>
     <a href="#" onclick="showWelcome(); return false;" style="color:#4ade80;">Показать правила</a>
@@ -128,17 +143,25 @@
     }
 
     // ---------- Экран приветствия ----------
+    function welcomeOpen() {
+      return document.getElementById("welcome").style.display !== "none";
+    }
+
     function showWelcome() {
       document.getElementById("welcome").style.display = "flex";
+      pauseLoop();
     }
 
     function closeWelcome() {
       document.getElementById("welcome").style.display = "none";
-      sessionStart = Date.now();
+      if (trades === 0) {
+        sessionStart = Date.now();
+      }
       try {
         localStorage.setItem("welcomed", "1");
       } catch (e) {
       }
+      startLoop();
     }
 
     try {
@@ -149,27 +172,33 @@
     }
 
     // ---------- Настройки игры ----------
-    const VISIBLE = 40;          // сколько свечей видно на графике
-    const SESSION_TRADES = 10;   // сделок в одной сессии
-    const MAX_CANDLES = 10;      // сколько свечей максимум живёт одна сделка
-    let TICK_MS = 400;           // сколько миллисекунд "рисуется" одна свеча
+    const VISIBLE = 40;              // сколько свечей видно на графике
+    const ROOM = 400;                // минимум свечей истории, которые остаются впереди после старта
+    const MAX_SAFE_LEVERAGE = 5;     // плечо выше этого считается нарушением
+    const MIN_TRADES_FOR_SCORE = 3;  // сколько сделок нужно, чтобы сессию оценили
+    let TICK_MS = 500;               // сколько миллисекунд "рисуется" одна свеча
 
     // ---------- Состояние игры ----------
     let balance = 1000;
     let price = 100;
     let violations = 0;
-    let tradesLeft = SESSION_TRADES;
+    let trades = 0;              // сколько сделок закрыто
+    let dirtyTrades = 0;         // сколько из них с нарушениями
     let lastProfit = 0;
     let lastAmount = 0;
     let noStopCount = 0;
     let bigTradeCount = 0;
     let revengeCount = 0;
+    let leverageCount = 0;
+    let leverage = 1;
     let startCursor = 0;         // с какой свечи истории началась сессия
     let cursor = 0;              // номер последней завершённой свечи
     let basePrice = 1;           // цена, которую мы считаем за 100
     let position = null;         // открытая сделка (или null, если сделки нет)
     let anim = null;             // свеча, которая сейчас "рисуется"
     let rafId = null;
+    let lastTs = 0;
+    let running = false;         // идёт ли сессия
     let marks = [];              // точки входа и выхода на графике
     let sessionStart = Date.now();
     let best = Number(localStorage.getItem("best")) || 0;
@@ -186,34 +215,90 @@
       };
     }
 
+    // Путь цены внутри свечи: 4 точки, между ними цена движется по прямой
+    function pathPoints(c) {
+      if (c.c >= c.o) {
+        return [c.o, c.l, c.h, c.c];
+      }
+      return [c.o, c.h, c.l, c.c];
+    }
+
+    // Где находится цена в момент t (t от 0 до 1)
+    function priceAt(pts, t) {
+      let seg = Math.min(2, Math.floor(t * 3));
+      return pts[seg] + (pts[seg + 1] - pts[seg]) * (t * 3 - seg);
+    }
+
+    // Самая низкая и самая высокая цена, которую прошла свеча между моментами t0 и t1
+    function pathRange(pts, t0, t1) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      function add(v) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+      add(priceAt(pts, t0));
+      add(priceAt(pts, t1));
+      [1 / 3, 2 / 3].forEach(function (tc) {
+        if (tc > t0 && tc < t1) {
+          add(priceAt(pts, tc));
+        }
+      });
+      return { lo: lo, hi: hi };
+    }
+
     function setControls(mode) {
       let idle = (mode === "idle");
       let open = (mode === "open");
       document.getElementById("buyBtn").disabled = !idle;
       document.getElementById("sellBtn").disabled = !idle;
       document.getElementById("closeBtn").disabled = !open;
+      document.getElementById("endBtn").disabled = (mode === "ended");
       document.getElementById("amount").disabled = !idle;
       document.getElementById("stop").disabled = !idle;
+      document.querySelectorAll(".lev").forEach(function (b) {
+        b.disabled = !idle;
+      });
+    }
+
+    function setLeverage(x) {
+      if (position || !running) {
+        return;
+      }
+      leverage = x;
+      document.querySelectorAll(".lev").forEach(function (b) {
+        if (Number(b.getAttribute("data-lev")) === x) {
+          b.classList.add("active");
+        } else {
+          b.classList.remove("active");
+        }
+      });
+      haptic("light");
     }
 
     function startHistory() {
-      let needed = VISIBLE + SESSION_TRADES * (MAX_CANDLES + 1) + 2;
-      if (typeof RAW === "undefined" || RAW.length < needed) {
+      if (typeof RAW === "undefined" || RAW.length < VISIBLE + ROOM + 2) {
         document.getElementById("message").textContent = "Не найден файл data.js с историческими данными";
+        running = false;
         setControls("ended");
         return;
       }
 
       let minCursor = VISIBLE - 1;
-      let maxCursor = RAW.length - 1 - SESSION_TRADES * (MAX_CANDLES + 1) - 1;
+      let maxCursor = RAW.length - 1 - ROOM;
       startCursor = minCursor + Math.floor(Math.random() * (maxCursor - minCursor + 1));
       cursor = startCursor;
       basePrice = Number(RAW[cursor][4]);
       price = 100;
       marks = [];
+      running = true;
+      startCandleAnim(performance.now());
 
       document.getElementById("price").textContent = price.toFixed(1);
       drawChart();
+      if (!welcomeOpen()) {
+        startLoop();
+      }
     }
 
     function revealData() {
@@ -236,6 +321,14 @@
       setTimeout(function () { document.body.classList.remove("tilt"); }, 400);
     }
 
+    // ---------- Уровни сделки ----------
+    function liqPriceFor(dir, entry, lev) {
+      if (dir === "buy") {
+        return entry * (1 - 1 / lev);
+      }
+      return entry * (1 + 1 / lev);
+    }
+
     // ---------- График: японские свечи ----------
     function drawChart() {
       let canvas = document.getElementById("chart");
@@ -248,7 +341,7 @@
         return;
       }
 
-      // 1. Какие свечи показываем: завершённые и (если идёт сделка) одна растущая
+      // 1. Какие свечи показываем: завершённые и одна растущая
       let done = anim ? VISIBLE - 1 : VISIBLE;
       let firstIndex = cursor - done + 1;
       let list = [];
@@ -260,22 +353,30 @@
       }
       let lastPrice = list[list.length - 1].c;
 
-      // 2. Линии: вход и стоп-лосс
+      // 2. Линии: вход, стоп-лосс, ликвидация
       let lines = [];
+      let liqLines = [];
       if (position) {
         lines.push({ p: position.entry, color: "#9ca3af", label: "Вход" });
         if (position.stopPrice !== null) {
           lines.push({ p: position.stopPrice, color: "#f87171", label: "Стоп" });
         }
-      } else {
+        if (position.leverage > 1) {
+          liqLines.push({ p: position.liqPrice, color: "#fb923c", label: "Ликвидация" });
+        }
+      } else if (running) {
         let s = Number(document.getElementById("stop").value);
         if (s > 0) {
           lines.push({ p: lastPrice * (1 - s / 100), color: "rgba(248,113,113,0.65)", label: "Стоп (Купить)" });
           lines.push({ p: lastPrice * (1 + s / 100), color: "rgba(248,113,113,0.65)", label: "Стоп (Продать)" });
         }
+        if (leverage > 1) {
+          liqLines.push({ p: liqPriceFor("buy", lastPrice, leverage), color: "rgba(251,146,60,0.6)", label: "Ликв. (Купить)" });
+          liqLines.push({ p: liqPriceFor("sell", lastPrice, leverage), color: "rgba(251,146,60,0.6)", label: "Ликв. (Продать)" });
+        }
       }
 
-      // 3. Масштаб по вертикали: чтобы влезли и свечи, и линии
+      // 3. Масштаб по вертикали: свечи и линии входа/стопа (ликвидация только если она рядом)
       let lo = Infinity;
       let hi = -Infinity;
       list.forEach(function (c) {
@@ -292,6 +393,12 @@
       let margin = (hi - lo) * 0.06;
       lo = lo - margin;
       hi = hi + margin;
+
+      liqLines.forEach(function (ln) {
+        if (ln.p > lo && ln.p < hi) {
+          lines.push(ln);
+        }
+      });
 
       let left = 8;
       let right = 8;
@@ -322,7 +429,7 @@
         ctx.fillRect(x - bodyW / 2, yTop, bodyW, Math.max(1.5, yBottom - yTop));
       });
 
-      // 5. Линии входа и стопа
+      // 5. Линии
       ctx.font = "20px sans-serif";
       ctx.textAlign = "left";
       lines.forEach(function (ln) {
@@ -355,72 +462,124 @@
       });
     }
 
-    // ---------- Анимация свечи ----------
+    // ---------- Рынок идёт всегда ----------
+    function startLoop() {
+      if (running && !rafId) {
+        lastTs = 0;
+        if (anim) {
+          anim.start = performance.now() - anim.lastT * TICK_MS;
+        }
+        rafId = requestAnimationFrame(frame);
+      }
+    }
+
+    function pauseLoop() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    }
+
     function startCandleAnim(ts) {
       let c = candleAt(cursor + 1);
-      let pts;
-      if (c.c >= c.o) {
-        pts = [c.o, c.l, c.h, c.c];
-      } else {
-        pts = [c.o, c.h, c.l, c.c];
-      }
       anim = {
         candle: c,
-        pts: pts,
+        pts: pathPoints(c),
         start: ts,
+        lastT: 0,
         p: c.o,
+        hi: c.o,
+        lo: c.o,
         view: { o: c.o, h: c.o, l: c.o, c: c.o }
       };
     }
 
     function frame(ts) {
       rafId = null;
-      if (!position) {
+      if (!running) {
         return;
       }
       if (!anim) {
         startCandleAnim(ts);
       }
 
-      let t = Math.min(1, (ts - anim.start) / TICK_MS);
-      let pts = anim.pts;
-      let seg = Math.min(2, Math.floor(t * 3));
-      let p = pts[seg] + (pts[seg + 1] - pts[seg]) * (t * 3 - seg);
-
-      let runH = Math.max(pts[0], p);
-      let runL = Math.min(pts[0], p);
-      for (let j = 1; j <= seg; j++) {
-        runH = Math.max(runH, pts[j]);
-        runL = Math.min(runL, pts[j]);
+      // Если вкладка была свёрнута или на паузе, рынок не должен "перепрыгнуть" вперёд
+      if (lastTs && ts - lastTs > 250) {
+        anim.start = anim.start + (ts - lastTs) - 16;
       }
+      lastTs = ts;
 
+      let t = Math.min(1, Math.max(0, (ts - anim.start) / TICK_MS));
+      let range = pathRange(anim.pts, anim.lastT, t);
+      let p = priceAt(anim.pts, t);
+      anim.lastT = t;
       anim.p = p;
-      anim.view = { o: anim.candle.o, h: runH, l: runL, c: p };
+      anim.hi = Math.max(anim.hi, range.hi);
+      anim.lo = Math.min(anim.lo, range.lo);
+      anim.view = { o: anim.candle.o, h: anim.hi, l: anim.lo, c: p };
 
-      if (position.stopPrice !== null) {
-        let hit = (position.dir === "buy" && runL <= position.stopPrice) ||
-                  (position.dir === "sell" && runH >= position.stopPrice);
-        if (hit) {
-          closePosition("stop", position.stopPrice);
-          return;
-        }
+      if (position) {
+        checkLevels(range);
       }
 
-      updateLive(p);
+      if (!running) {
+        drawChart();
+        return;
+      }
+
+      price = p;
+      document.getElementById("price").textContent = p.toFixed(1);
+      if (position) {
+        updateLive(p);
+      }
       drawChart();
 
       if (t >= 1) {
-        let closePrice = anim.candle.c;
-        cursor = cursor + 1;
-        anim = null;
-        position.candles = position.candles + 1;
-        if (position.candles >= MAX_CANDLES) {
-          closePosition("time", closePrice);
+        // последняя свеча истории: сессия заканчивается (открытая сделка закроется по её цене)
+        if (cursor + 1 >= RAW.length - 1) {
+          endSession("data");
           return;
         }
+        cursor = cursor + 1;
+        startCandleAnim(ts);
       }
 
       rafId = requestAnimationFrame(frame);
+    }
+
+    // Не задела ли цена стоп или ликвидацию
+    function checkLevels(range) {
+      let stopPrice = position.stopPrice;
+      let liqPrice = position.liqPrice;
+      let level;
+      let reason;
+      let hit = false;
+
+      if (position.dir === "buy") {
+        // цена идёт вниз: первым сработает тот уровень, что выше
+        if (stopPrice !== null && stopPrice > liqPrice) {
+          level = stopPrice;
+          reason = "stop";
+        } else {
+          level = liqPrice;
+          reason = "liq";
+        }
+        hit = range.lo <= level;
+      } else {
+        // цена идёт вверх: первым сработает тот уровень, что ниже
+        if (stopPrice !== null && stopPrice < liqPrice) {
+          level = stopPrice;
+          reason = "stop";
+        } else {
+          level = liqPrice;
+          reason = "liq";
+        }
+        hit = range.hi >= level;
+      }
+
+      if (hit) {
+        closePosition(reason, level);
+      }
     }
 
     function pnlPercent(dir, entry, exit) {
@@ -430,19 +589,36 @@
       return (entry - exit) / entry * 100;
     }
 
+    function profitFor(pos, exitPrice) {
+      let pnl = pnlPercent(pos.dir, pos.entry, exitPrice);
+      let profit = Math.round(pos.amount * pos.leverage * pnl / 100);
+      if (profit < -pos.amount) {
+        profit = -pos.amount;
+      }
+      return profit;
+    }
+
     function updateLive(p) {
-      let pnl = pnlPercent(position.dir, position.entry, p);
-      let now = Math.round(position.amount * pnl / 100);
+      let now = profitFor(position, p);
       let name = position.dir === "buy" ? "Купить" : "Продать";
-      document.getElementById("live").textContent =
-        "Сделка: " + name + " " + position.amount + " $ · вход " + position.entry.toFixed(1) +
+      let text = name + " " + position.amount + " $ x" + position.leverage +
+        " · вход " + position.entry.toFixed(1) +
         " · сейчас " + p.toFixed(1) + " · " + (now >= 0 ? "+" : "") + now + " $";
-      document.getElementById("price").textContent = p.toFixed(1);
+      let second = [];
+      if (position.stopPrice !== null) {
+        second.push("стоп " + position.stopPrice.toFixed(1));
+      } else {
+        second.push("без стопа");
+      }
+      if (position.leverage > 1) {
+        second.push("ликвидация " + position.liqPrice.toFixed(1));
+      }
+      document.getElementById("live").textContent = text + "\n" + second.join(" · ");
     }
 
     // ---------- Открытие и закрытие сделки ----------
     function openPosition(direction) {
-      if (position || typeof RAW === "undefined") {
+      if (position || !running || !anim) {
         return;
       }
 
@@ -463,7 +639,7 @@
       let warnings = [];
       haptic("light");
 
-      if (tradesLeft === SESSION_TRADES && Date.now() - sessionStart < 2000) {
+      if (trades === 0 && Date.now() - sessionStart < 2000) {
         document.getElementById("achievement4").textContent = "🏆 Ачивка: Быстрейшая рука Дикого Запада (сделка за 2 секунды)";
       }
 
@@ -483,6 +659,11 @@
         warnings.push("⚠ Нарушение: увеличил сделку после убытка (реванш)!");
       }
 
+      if (leverage > MAX_SAFE_LEVERAGE) {
+        leverageCount = leverageCount + 1;
+        warnings.push("⚠ Нарушение: слишком большое плечо (x" + leverage + ")!");
+      }
+
       if (warnings.length > 0) {
         violations = violations + warnings.length;
         document.getElementById("violations").textContent = violations;
@@ -491,7 +672,8 @@
         shake();
       }
 
-      let entry = candleAt(cursor).c;
+      // Вход по той цене, которая на графике прямо сейчас
+      let entry = anim.p;
       let stopPrice = null;
       if (stop > 0) {
         if (direction === "buy") {
@@ -504,99 +686,119 @@
       position = {
         dir: direction,
         amount: amount,
+        leverage: leverage,
         stop: stop,
         entry: entry,
         stopPrice: stopPrice,
-        candles: 0
+        liqPrice: liqPriceFor(direction, entry, leverage),
+        dirty: warnings.length > 0
       };
-      marks = [{ i: cursor, p: entry, color: "#ffffff" }];
-      anim = null;
+      marks.push({ i: cursor + 1, p: entry, color: "#ffffff" });
 
       document.getElementById("result").textContent = "";
       setControls("open");
       updateLive(entry);
       drawChart();
-      rafId = requestAnimationFrame(frame);
     }
 
     function closeManual() {
-      if (!position) {
+      if (!position || !anim) {
         return;
       }
-      let p = anim ? anim.p : candleAt(cursor).c;
-      closePosition("manual", p);
+      closePosition("manual", anim.p);
     }
 
     function closePosition(reason, exitPrice) {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      if (anim) {
-        cursor = cursor + 1;
-        anim = null;
-      }
-
       let pos = position;
       position = null;
 
-      let pnl = pnlPercent(pos.dir, pos.entry, exitPrice);
-      let profit = Math.round(pos.amount * pnl / 100);
-      if (profit < -pos.amount) {
+      let profit = profitFor(pos, exitPrice);
+      if (reason === "liq") {
         profit = -pos.amount;
       }
 
-      marks.push({ i: cursor, p: exitPrice, color: "#facc15" });
+      marks.push({ i: anim ? cursor + 1 : cursor, p: exitPrice, color: "#facc15" });
 
       balance = balance + profit;
       lastProfit = profit;
       lastAmount = pos.amount;
-      tradesLeft = tradesLeft - 1;
-      price = candleAt(cursor).c;
+      trades = trades + 1;
+      if (pos.dirty) {
+        dirtyTrades = dirtyTrades + 1;
+      }
 
       document.getElementById("balance").textContent = balance;
-      document.getElementById("price").textContent = price.toFixed(1);
-      document.getElementById("tradesLeft").textContent = tradesLeft;
+      document.getElementById("tradesDone").textContent = trades;
       document.getElementById("live").textContent = "";
 
-      let reasonText = "Время сделки вышло";
+      let sign = profit >= 0 ? "+" : "";
+      let reasonText = "Сделка закрыта вручную";
       if (reason === "stop") {
         reasonText = "Сработал стоп-лосс";
         haptic("rigid");
-      } else if (reason === "manual") {
-        reasonText = "Сделка закрыта вручную";
+      } else if (reason === "liq") {
+        reasonText = "Ликвидация! Плечо x" + pos.leverage + " сожгло весь залог";
+        haptic("heavy");
+        document.getElementById("achievement5").textContent = "🏆 Ачивка: Ликвидирован (плечо забрало весь залог)";
+      } else if (reason === "end") {
+        reasonText = "Сделка закрыта вместе с сессией";
       }
-      document.getElementById("result").textContent =
-        reasonText + ". Результат: " + (profit >= 0 ? "+" : "") + profit + " $";
-
-      setControls("idle");
-      drawChart();
+      document.getElementById("result").textContent = reasonText + ". Результат: " + sign + profit + " $";
 
       if (balance <= 0) {
         document.getElementById("achievement").textContent = "🏆 Ачивка: Слил всё!";
+        endSession("broke");
+        return;
       }
 
-      if (balance <= 0 || tradesLeft === 0) {
-        endSession();
-      }
+      setControls("idle");
     }
 
     // ---------- Конец сессии ----------
-    function endSession() {
-      setControls("ended");
-
-      let score = Math.max(0, 100 - violations * 25);
-      if (score > best) {
-        best = score;
-        localStorage.setItem("best", best);
-        document.getElementById("best").textContent = best;
+    function endSession(why) {
+      if (!running) {
+        return;
       }
 
-      let diff = balance - 1000;
-      let text = "Сессия окончена. Итог: " + diff + " $. Оценка дисциплины: " + score + " из 100.";
+      // Открытая сделка закрывается по текущей цене
+      if (position && anim) {
+        closePosition("end", anim.p);
+        if (!running) {
+          return;
+        }
+      }
 
-      if (diff > 0 && violations > 0) {
-        text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
+      running = false;
+      pauseLoop();
+      if (anim) {
+        cursor = cursor + 1;
+        anim = null;
+      }
+      setControls("ended");
+      document.getElementById("live").textContent = "";
+
+      let diff = balance - 1000;
+      let text = "Сессия окончена. Итог: " + diff + " $.";
+
+      if (trades >= MIN_TRADES_FOR_SCORE) {
+        let score = Math.round(100 * (trades - dirtyTrades) / trades);
+        text = text + " Оценка дисциплины: " + score + " из 100 (сделок без нарушений: " + (trades - dirtyTrades) + " из " + trades + ").";
+        if (score > best) {
+          best = score;
+          localStorage.setItem("best", best);
+          document.getElementById("best").textContent = best;
+        }
+        if (diff > 0 && violations > 0) {
+          text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
+        }
+        if (violations === 0) {
+          document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
+        }
+      } else {
+        text = text + " Слишком мало сделок для оценки: нужно хотя бы " + MIN_TRADES_FOR_SCORE + ".";
+      }
+      if (why === "data") {
+        text = text + " История данных закончилась.";
       }
       document.getElementById("summary").textContent = text;
 
@@ -607,40 +809,46 @@
       }
 
       revealData();
+      drawChart();
 
       if (violations > 0) {
         document.getElementById("review").innerHTML =
           "Разбор ошибок:<br>" +
           "Без стоп-лосса: " + noStopCount + "<br>" +
           "Сделка больше 20% депозита: " + bigTradeCount + "<br>" +
-          "Реванш после убытка: " + revengeCount;
-      }
-
-      if (violations === 0) {
-        document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
+          "Реванш после убытка: " + revengeCount + "<br>" +
+          "Слишком большое плечо: " + leverageCount;
       }
     }
 
     function restart() {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+      pauseLoop();
+      running = false;
       position = null;
       anim = null;
       marks = [];
 
       balance = 1000;
       violations = 0;
-      tradesLeft = SESSION_TRADES;
+      trades = 0;
+      dirtyTrades = 0;
       lastProfit = 0;
       lastAmount = 0;
       noStopCount = 0;
       bigTradeCount = 0;
       revengeCount = 0;
+      leverageCount = 0;
       sessionStart = Date.now();
+      leverage = 1;
+      document.querySelectorAll(".lev").forEach(function (b) {
+        if (b.getAttribute("data-lev") === "1") {
+          b.classList.add("active");
+        } else {
+          b.classList.remove("active");
+        }
+      });
       document.getElementById("balance").textContent = balance;
-      document.getElementById("tradesLeft").textContent = SESSION_TRADES;
+      document.getElementById("tradesDone").textContent = 0;
       document.getElementById("violations").textContent = "0";
       document.getElementById("live").textContent = "";
       document.getElementById("result").textContent = "";
@@ -648,6 +856,7 @@
       document.getElementById("achievement2").textContent = "";
       document.getElementById("achievement3").textContent = "";
       document.getElementById("achievement4").textContent = "";
+      document.getElementById("achievement5").textContent = "";
       document.getElementById("message").textContent = "";
       document.getElementById("summary").textContent = "";
       document.getElementById("reveal").textContent = "";
@@ -655,9 +864,6 @@
       setControls("idle");
       startHistory();
     }
-
-    // Пока сделки нет, линия стопа на графике двигается вместе с полем "Стоп-лосс"
-    document.getElementById("stop").addEventListener("input", drawChart);
 
     startHistory();
   </script>
