@@ -5,12 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Tilt Lab</title>
     <script>
-    window.addEventListener("error", function (e) {
-      var d = document.createElement("div");
-      d.style.cssText = "position:fixed;top:0;left:0;right:0;background:#7f1d1d;color:#fff;padding:8px;font-size:12px;z-index:9999";
-      d.textContent = "Ошибка: " + e.message + " (строка " + e.lineno + ")";
-      document.documentElement.appendChild(d);
-    });
   </script>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <style>
@@ -26,8 +20,20 @@
     input {
       width: 80px; padding: 6px; border-radius: 6px; border: 1px solid #444;
       background: #1b1b1b; color: white; text-align: center; font-size: 16px;
-    }
+    }ы
     canvas { max-width: 100%; }
+        #welcome {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; padding: 16px;
+    }
+    #welcome .card {
+      background: #1b1b1b; border-radius: 12px; padding: 20px; max-width: 340px; text-align: left;
+    }
+    #welcome h2 { margin-top: 0; text-align: center; }
+    #welcome ul { padding-left: 20px; }
+    #welcome .note { color: #aaa; font-size: 13px; }
+    .footer-note { color: #777; font-size: 12px; margin-top: 24px; }
         html, body, button, input { touch-action: manipulation; }
         @keyframes tilt {
       0%, 100% { transform: translateX(0); background: #111; }
@@ -41,7 +47,21 @@
 </head>
 <body style="background:#111; color:white; font-family:sans-serif; text-align:center;">
 
-  <h1>Tilt Lab</h1>
+    <div id="welcome">
+    <div class="card">
+      <h2>Добро пожаловать!</h2>
+      <p>Это тренажёр дисциплины: ты торгуешь виртуальными деньгами и учишься не нарушать правила.</p>
+      <ul>
+        <li>Всегда ставь стоп-лосс.</li>
+        <li>Не рискуй больше 20% депозита в одной сделке.</li>
+        <li>Не увеличивай сделку после убытка, чтобы отыграться. Это и есть тильт.</li>
+      </ul>
+      <p>Оценка зависит не от прибыли, а от соблюдения правил. В сессии 10 сделок.</p>
+      <p class="note">Это учебная игра без реальных денег. Цены в игре смоделированы и не отражают реальный рынок. Игра не является инвестиционной рекомендацией.</p>
+      <div style="text-align:center;"><button onclick="closeWelcome()">Начать</button></div>
+    </div>
+  </div>
+    <h1>Tilt Lab</h1>
   <p>Депозит: <span id="balance">1000</span> $</p>
   <p>Цена актива: <span id="price">100.0</span></p>
   <canvas id="chart" width="320" height="160" style="background:#1b1b1b; border-radius:8px;"></canvas>
@@ -61,8 +81,30 @@
   <p id="achievement2" style="color:gold;"></p>
   <p id="achievement3" style="color:gold;"></p>
   <p id="achievement4" style="color:gold;"></p>
+    <p class="footer-note">
+    Учебный тренажёр. Цены смоделированы. Не инвестиционная рекомендация.<br>
+    <a href="#" onclick="showWelcome(); return false;" style="color:#4ade80;">Показать правила</a>
+  </p>
 
   <script>
+        function showWelcome() {
+      document.getElementById("welcome").style.display = "flex";
+    }
+
+    function closeWelcome() {
+      document.getElementById("welcome").style.display = "none";
+      try {
+        localStorage.setItem("welcomed", "1");
+      } catch (e) {
+      }
+    }
+
+    try {
+      if (localStorage.getItem("welcomed") === "1") {
+        document.getElementById("welcome").style.display = "none";
+      }
+    } catch (e) {
+    }
     let balance = 1000;
     let price = 100;
     let prices = [100];
