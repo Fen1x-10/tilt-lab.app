@@ -48,6 +48,27 @@
     #welcome h2 { margin-top: 0; text-align: center; }
     #welcome ul { padding-left: 20px; }
     #welcome .note { color: #aaa; font-size: 13px; }
+    body { padding-top: 0; }
+    #hud {
+      position: sticky; top: 0; z-index: 50; background: #111;
+      display: flex; justify-content: space-between; gap: 6px;
+      padding: 10px 0 8px; border-bottom: 1px solid #262626;
+    }
+    .hcell { flex: 1; font-size: 13px; }
+    .hcell b { display: block; font-size: 20px; }
+    .hcell .hl { color: #9ca3af; }
+    .hl { color: #9ca3af; font-size: 13px; }
+    .sub { color: #9ca3af; font-size: 13px; margin: 6px 0; }
+    #panel {
+      position: sticky; bottom: 0; z-index: 50; background: #111;
+      border-top: 1px solid #262626; padding: 8px 0 6px; margin-top: 8px;
+    }
+    #panel .row { display: flex; justify-content: center; align-items: center; gap: 6px; margin: 4px 0; flex-wrap: wrap; }
+    #panel label { font-size: 14px; }
+    #panel input { width: 64px; padding: 4px; }
+    #panel button { margin: 2px; padding: 10px 14px; }
+    #buyBtn, #sellBtn, #closeBtn { flex: 1; }
+    .pos { color: #4ade80; } .neg { color: #f87171; }
     .footer-note { color: #777; font-size: 12px; margin-top: 24px; }
   </style>
 </head>
@@ -71,32 +92,42 @@
     </div>
   </div>
 
-  <h1>Tilt Lab</h1>
-  <p>Депозит: <span id="balance">1000</span> $</p>
-  <p>Цена актива: <span id="price">100.0</span></p>
+  <div id="hud">
+    <div class="hcell"><span class="hl">Депозит, $</span><b id="balance">1000</b></div>
+    <div class="hcell"><span class="hl">Итог</span><b id="sessionPnl">0 $</b></div>
+    <div class="hcell"><span class="hl">Сделка</span><b id="openPnl">—</b></div>
+  </div>
+  <div class="sub">Tilt Lab · цена <span id="price">100.0</span></div>
   <canvas id="chart" width="640" height="360" style="background:#1b1b1b; border-radius:8px;"></canvas>
-  <p id="live" style="min-height:2.6em; color:#e5e7eb; font-size:14px; white-space:pre-line;"></p>
+  <p id="live" style="min-height:2.6em; color:#e5e7eb; font-size:14px; white-space:pre-line; margin:8px 0;"></p>
+  <p id="message" style="color:tomato; margin:4px 0;"></p>
+  <p id="result" style="margin:4px 0;"></p>
+
+  <div id="panel">
+    <div class="row">
+      <label>Залог <input id="amount" type="number" value="100"> $</label>
+      <label>Стоп <input id="stop" type="number" value="2"> %</label>
+    </div>
+    <div class="row">
+      <span class="hl">Плечо</span>
+      <button class="lev active" data-lev="1" onclick="setLeverage(1)">x1</button>
+      <button class="lev" data-lev="2" onclick="setLeverage(2)">x2</button>
+      <button class="lev" data-lev="5" onclick="setLeverage(5)">x5</button>
+      <button class="lev" data-lev="10" onclick="setLeverage(10)">x10</button>
+    </div>
+    <div class="row">
+      <button id="buyBtn" onclick="openPosition('buy')">Купить</button>
+      <button id="sellBtn" onclick="openPosition('sell')">Продать</button>
+      <button id="closeBtn" onclick="closeManual()" disabled>Закрыть</button>
+    </div>
+  </div>
+
+  <p>Сделок: <span id="tradesDone">0</span> · Нарушений: <span id="violations">0</span> · Лучшая оценка: <span id="best">0</span></p>
   <p id="summary" style="font-weight:bold;"></p>
   <p id="reveal" style="color:#facc15;"></p>
   <p id="review" style="color:tomato;"></p>
-  <p>Размер сделки (залог): <input id="amount" type="number" value="100"> $</p>
-  <p>Стоп-лосс: <input id="stop" type="number" value="2"> %</p>
-  <p>Плечо:
-    <button class="lev active" data-lev="1" onclick="setLeverage(1)">x1</button>
-    <button class="lev" data-lev="2" onclick="setLeverage(2)">x2</button>
-    <button class="lev" data-lev="5" onclick="setLeverage(5)">x5</button>
-    <button class="lev" data-lev="10" onclick="setLeverage(10)">x10</button>
-  </p>
-  <p>Сделок: <span id="tradesDone">0</span></p>
-  <p>Нарушений правил: <span id="violations">0</span></p>
-  <p>Лучшая оценка дисциплины: <span id="best">0</span></p>
-  <button id="buyBtn" onclick="openPosition('buy')">Купить (жду роста)</button>
-  <button id="sellBtn" onclick="openPosition('sell')">Продать (жду падения)</button>
-  <button id="closeBtn" onclick="closeManual()" disabled>Закрыть сделку</button>
   <button id="endBtn" onclick="endSession('manual')">Завершить сессию</button>
   <button onclick="restart()">Начать заново</button>
-  <p id="message" style="color:tomato;"></p>
-  <p id="result"></p>
   <p id="achievement" style="color:gold;"></p>
   <p id="achievement2" style="color:gold;"></p>
   <p id="achievement3" style="color:gold;"></p>
@@ -614,6 +645,17 @@
         second.push("ликвидация " + position.liqPrice.toFixed(1));
       }
       document.getElementById("live").textContent = text + "\n" + second.join(" · ");
+      setPnlCell("openPnl", now, true);
+    }
+
+    function setPnlCell(id, value, withSign) {
+      let el = document.getElementById(id);
+      el.textContent = (value > 0 && withSign ? "+" : "") + value + " $";
+      el.className = value > 0 ? "pos" : (value < 0 ? "neg" : "");
+    }
+
+    function updateSessionPnl() {
+      setPnlCell("sessionPnl", balance - 1000, true);
     }
 
     // ---------- Открытие и закрытие сделки ----------
@@ -730,6 +772,9 @@
       document.getElementById("balance").textContent = balance;
       document.getElementById("tradesDone").textContent = trades;
       document.getElementById("live").textContent = "";
+      document.getElementById("openPnl").textContent = "—";
+      document.getElementById("openPnl").className = "";
+      updateSessionPnl();
 
       let sign = profit >= 0 ? "+" : "";
       let reasonText = "Сделка закрыта вручную";
@@ -848,6 +893,9 @@
         }
       });
       document.getElementById("balance").textContent = balance;
+      document.getElementById("openPnl").textContent = "—";
+      document.getElementById("openPnl").className = "";
+      updateSessionPnl();
       document.getElementById("tradesDone").textContent = 0;
       document.getElementById("violations").textContent = "0";
       document.getElementById("live").textContent = "";
