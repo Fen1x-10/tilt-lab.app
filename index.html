@@ -4,9 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Tilt Lab</title>
-    <script>
-  </script>
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <script src="data.js"></script>
   <style>
     body { max-width: 380px; margin: 0 auto; padding: 16px; }
     h1 { margin-bottom: 4px; }
@@ -20,9 +19,18 @@
     input {
       width: 80px; padding: 6px; border-radius: 6px; border: 1px solid #444;
       background: #1b1b1b; color: white; text-align: center; font-size: 16px;
-    }ы
+    }
     canvas { max-width: 100%; }
-        #welcome {
+    html, body, button, input { touch-action: manipulation; }
+    @keyframes tilt {
+      0%, 100% { transform: translateX(0); background: #111; }
+      20% { transform: translateX(-12px); background: #7f1d1d; }
+      40% { transform: translateX(12px); background: #7f1d1d; }
+      60% { transform: translateX(-9px); background: #5c1414; }
+      80% { transform: translateX(9px); background: #5c1414; }
+    }
+    .tilt { animation: tilt 0.4s; }
+    #welcome {
       position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
       display: flex; align-items: center; justify-content: center;
       z-index: 1000; padding: 16px;
@@ -34,20 +42,11 @@
     #welcome ul { padding-left: 20px; }
     #welcome .note { color: #aaa; font-size: 13px; }
     .footer-note { color: #777; font-size: 12px; margin-top: 24px; }
-        html, body, button, input { touch-action: manipulation; }
-        @keyframes tilt {
-      0%, 100% { transform: translateX(0); background: #111; }
-      20% { transform: translateX(-8px); background: #3a1414; }
-      40% { transform: translateX(8px); background: #3a1414; }
-      60% { transform: translateX(-6px); background: #2a1010; }
-      80% { transform: translateX(6px); background: #2a1010; }
-    }
-    .tilt { animation: tilt 0.4s; }
   </style>
 </head>
 <body style="background:#111; color:white; font-family:sans-serif; text-align:center;">
 
-    <div id="welcome">
+  <div id="welcome">
     <div class="card">
       <h2>Добро пожаловать!</h2>
       <p>Это тренажёр дисциплины: ты торгуешь виртуальными деньгами и учишься не нарушать правила.</p>
@@ -56,16 +55,18 @@
         <li>Не рискуй больше 20% депозита в одной сделке.</li>
         <li>Не увеличивай сделку после убытка, чтобы отыграться. Это и есть тильт.</li>
       </ul>
-      <p>Оценка зависит не от прибыли, а от соблюдения правил. В сессии 10 сделок.</p>
-      <p class="note">Это учебная игра без реальных денег. Цены в игре смоделированы и не отражают реальный рынок. Игра не является инвестиционной рекомендацией.</p>
+      <p>Оценка зависит не от прибыли, а от соблюдения правил. В сессии 10 сделок. График взят из реальной истории крипторынка, а какой это актив и когда это было, ты узнаешь в конце.</p>
+      <p class="note">Это учебная игра без реальных денег. Прошлые результаты не гарантируют будущих. Игра не является инвестиционной рекомендацией.</p>
       <div style="text-align:center;"><button onclick="closeWelcome()">Начать</button></div>
     </div>
   </div>
-    <h1>Tilt Lab</h1>
+
+  <h1>Tilt Lab</h1>
   <p>Депозит: <span id="balance">1000</span> $</p>
   <p>Цена актива: <span id="price">100.0</span></p>
   <canvas id="chart" width="320" height="160" style="background:#1b1b1b; border-radius:8px;"></canvas>
   <p id="summary" style="font-weight:bold;"></p>
+  <p id="reveal" style="color:#facc15;"></p>
   <p id="review" style="color:tomato;"></p>
   <p>Размер сделки: <input id="amount" type="number" value="100"> $</p>
   <p>Стоп-лосс: <input id="stop" type="number" value="2"> %</p>
@@ -81,46 +82,30 @@
   <p id="achievement2" style="color:gold;"></p>
   <p id="achievement3" style="color:gold;"></p>
   <p id="achievement4" style="color:gold;"></p>
-    <p class="footer-note">
-    Учебный тренажёр. Цены смоделированы. Не инвестиционная рекомендация.<br>
+  <p class="footer-note">
+    Учебный тренажёр. Исторические данные крипторынка. Не инвестиционная рекомендация.<br>
     <a href="#" onclick="showWelcome(); return false;" style="color:#4ade80;">Показать правила</a>
   </p>
 
   <script>
-        function showWelcome() {
-      document.getElementById("welcome").style.display = "flex";
-    }
-
-    function closeWelcome() {
-      document.getElementById("welcome").style.display = "none";
-      try {
-        localStorage.setItem("welcomed", "1");
-      } catch (e) {
+    let lastTouchEnd = 0;
+    document.addEventListener("touchend", function (e) {
+      let now = Date.now();
+      if (now - lastTouchEnd < 500) {
+        e.preventDefault();
+        let btn = e.target.closest("button");
+        if (btn && !btn.disabled) {
+          btn.click();
+        }
       }
-    }
+      lastTouchEnd = now;
+    }, { passive: false });
 
-    try {
-      if (localStorage.getItem("welcomed") === "1") {
-        document.getElementById("welcome").style.display = "none";
-      }
-    } catch (e) {
-    }
-    let balance = 1000;
-    let price = 100;
-    let prices = [100];
-    let violations = 0;
-    let tradesLeft = 10;
-    let lastProfit = 0;
-    let lastAmount = 0;
-    let trend = 0;
-    let noStopCount = 0;
-    let bigTradeCount = 0;
-    let revengeCount = 0;
-    let sessionStart = Date.now();
-    let best = Number(localStorage.getItem("best")) || 0;
-    document.getElementById("best").textContent = best;
+    document.addEventListener("gesturestart", function (e) {
+      e.preventDefault();
+    });
 
-        function haptic(kind) {
+    function haptic(kind) {
       try {
         let h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
         if (!h) {
@@ -135,6 +120,99 @@
       }
     }
 
+    function showWelcome() {
+      document.getElementById("welcome").style.display = "flex";
+    }
+
+    function closeWelcome() {
+      document.getElementById("welcome").style.display = "none";
+      sessionStart = Date.now();
+      try {
+        localStorage.setItem("welcomed", "1");
+      } catch (e) {
+      }
+    }
+
+    try {
+      if (localStorage.getItem("welcomed") === "1") {
+        document.getElementById("welcome").style.display = "none";
+      }
+    } catch (e) {
+    }
+
+    const STEP = 4;
+    const HISTORY = 20;
+    const SESSION_TRADES = 10;
+
+    let balance = 1000;
+    let price = 100;
+    let prices = [100];
+    let violations = 0;
+    let tradesLeft = 10;
+    let lastProfit = 0;
+    let lastAmount = 0;
+    let noStopCount = 0;
+    let bigTradeCount = 0;
+    let revengeCount = 0;
+    let startCursor = 0;
+    let cursor = 0;
+    let sessionStart = Date.now();
+    let best = Number(localStorage.getItem("best")) || 0;
+    document.getElementById("best").textContent = best;
+
+    function startHistory() {
+      let needed = (HISTORY - 1) * STEP + SESSION_TRADES * STEP + 2;
+      if (typeof RAW === "undefined" || RAW.length < needed) {
+        document.getElementById("message").textContent = "Не найден файл data.js с историческими данными";
+        document.getElementById("buyBtn").disabled = true;
+        document.getElementById("sellBtn").disabled = true;
+        return;
+      }
+
+      let minCursor = (HISTORY - 1) * STEP;
+      let maxCursor = RAW.length - 1 - SESSION_TRADES * STEP;
+      startCursor = minCursor + Math.floor(Math.random() * (maxCursor - minCursor + 1));
+      cursor = startCursor;
+      let basePrice = Number(RAW[cursor][4]);
+
+      prices = [];
+      for (let k = HISTORY - 1; k >= 0; k--) {
+        let index = cursor - k * STEP;
+        prices.push(100 * Number(RAW[index][4]) / basePrice);
+      }
+      price = 100;
+
+      document.getElementById("price").textContent = price.toFixed(1);
+      drawChart();
+    }
+
+    function nextChange() {
+      let from = Number(RAW[cursor][4]);
+      cursor = cursor + STEP;
+      let to = Number(RAW[cursor][4]);
+      return (to / from - 1) * 100;
+    }
+
+    function revealData() {
+      if (typeof RAW === "undefined") {
+        return;
+      }
+      let name = "Криптовалюта";
+      if (typeof DATA_NAME !== "undefined") {
+        name = DATA_NAME;
+      }
+      let from = new Date(Number(RAW[startCursor][0])).toLocaleDateString("ru-RU");
+      let to = new Date(Number(RAW[cursor][0])).toLocaleDateString("ru-RU");
+      document.getElementById("reveal").textContent = "Это был график " + name + ", " + from + " – " + to;
+    }
+
+    function shake() {
+      document.body.classList.remove("tilt");
+      void document.body.offsetWidth;
+      document.body.classList.add("tilt");
+      setTimeout(function () { document.body.classList.remove("tilt"); }, 400);
+    }
+
     function drawChart() {
       let canvas = document.getElementById("chart");
       let ctx = canvas.getContext("2d");
@@ -143,6 +221,7 @@
       if (prices.length < 2) {
         return;
       }
+
       let min = Math.min(...prices);
       let max = Math.max(...prices);
       if (max === min) {
@@ -182,11 +261,14 @@
         text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
       }
       document.getElementById("summary").textContent = text;
-            if (violations === 0) {
+
+      if (violations === 0) {
         haptic("success");
       } else {
         haptic("warning");
       }
+
+      revealData();
 
       if (violations > 0) {
         document.getElementById("review").innerHTML =
@@ -198,11 +280,6 @@
 
       if (violations === 0) {
         document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
-      }
-
-      let sessionDuration = (Date.now() - sessionStart) / 1000; // in seconds
-      if (sessionDuration > 60) {
-        document.getElementById("achievement4").textContent = "🏆 Ачивка: Мастер времени (сессия длиной более минуты)";
       }
     }
 
@@ -222,8 +299,9 @@
       }
 
       let warnings = [];
-            haptic("light");
-            if (tradesLeft === 10 && Date.now() - sessionStart < 2000) {
+      haptic("light");
+
+      if (tradesLeft === 10 && Date.now() - sessionStart < 2000) {
         document.getElementById("achievement4").textContent = "🏆 Ачивка: Быстрейшая рука Дикого Запада (сделка за 2 секунды)";
       }
 
@@ -247,13 +325,11 @@
         violations = violations + warnings.length;
         document.getElementById("violations").textContent = violations;
         document.getElementById("message").innerHTML = warnings.join("<br>");
-                document.body.classList.add("tilt");
-                        haptic("error");
-        setTimeout(function () { document.body.classList.remove("tilt"); }, 400);
+        haptic("error");
+        shake();
       }
 
-      trend = trend * 0.7 + (Math.random() * 2 - 1);
-      let change = trend * 1.5 + (Math.random() * 2 - 1);
+      let change = nextChange();
 
       let move = change;
       if (direction === "sell") {
@@ -264,13 +340,14 @@
       if (stop > 0 && move < -stop) {
         move = -stop;
         stopped = true;
+        haptic("rigid");
       }
 
       let profit = Math.round(amount * move / 100);
 
       price = price * (1 + change / 100);
       prices.push(price);
-      if (prices.length > 20) {
+      if (prices.length > HISTORY) {
         prices.shift();
       }
 
@@ -286,7 +363,6 @@
       let text = "Цена изменилась на " + change.toFixed(1) + "%. Результат: " + profit + " $";
       if (stopped) {
         text = text + " (сработал стоп-лосс)";
-        haptic("rigid");
       }
       document.getElementById("result").textContent = text;
       drawChart();
@@ -302,18 +378,15 @@
 
     function restart() {
       balance = 1000;
-      price = 100;
-      prices = [100];
       violations = 0;
       tradesLeft = 10;
       lastProfit = 0;
       lastAmount = 0;
-      trend = 0;
       noStopCount = 0;
       bigTradeCount = 0;
       revengeCount = 0;
+      sessionStart = Date.now();
       document.getElementById("balance").textContent = balance;
-      document.getElementById("price").textContent = "100.0";
       document.getElementById("tradesLeft").textContent = "10";
       document.getElementById("violations").textContent = "0";
       document.getElementById("result").textContent = "";
@@ -321,14 +394,16 @@
       document.getElementById("achievement2").textContent = "";
       document.getElementById("achievement3").textContent = "";
       document.getElementById("achievement4").textContent = "";
-      sessionStart = Date.now();
       document.getElementById("message").textContent = "";
       document.getElementById("summary").textContent = "";
+      document.getElementById("reveal").textContent = "";
       document.getElementById("review").innerHTML = "";
       document.getElementById("buyBtn").disabled = false;
       document.getElementById("sellBtn").disabled = false;
-      drawChart();
+      startHistory();
     }
+
+    startHistory();
   </script>
 
 </body>
