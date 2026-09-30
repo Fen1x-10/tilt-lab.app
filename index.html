@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Tilt Lab</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <style>
     body { max-width: 380px; margin: 0 auto; padding: 16px; }
     h1 { margin-bottom: 4px; }
@@ -69,7 +70,20 @@
     let best = Number(localStorage.getItem("best")) || 0;
     document.getElementById("best").textContent = best;
 
-    function drawChart() {
+    function drawChart  () {    function haptic(kind) {
+      try {
+        let h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
+        if (!h) {
+          return;
+        }
+        if (kind === "error" || kind === "success" || kind === "warning") {
+          h.notificationOccurred(kind);
+        } else {
+          h.impactOccurred(kind);
+        }
+      } catch (e) {
+      }
+    }      
       let canvas = document.getElementById("chart");
       let ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -117,6 +131,11 @@
         text = text + " Ты в плюсе, но с нарушениями правил: это удача, а не навык.";
       }
       document.getElementById("summary").textContent = text;
+            if (violations === 0) {
+        haptic("success");
+      } else {
+        haptic("warning");
+      }
 
       if (violations > 0) {
         document.getElementById("review").innerHTML =
@@ -152,6 +171,7 @@
       }
 
       let warnings = [];
+            haptic("light");
             if (tradesLeft === 10 && Date.now() - sessionStart < 2000) {
         document.getElementById("achievement4").textContent = "🏆 Ачивка: Быстрейшая рука Дикого Запада (сделка за 2 секунды)";
       }
@@ -177,6 +197,7 @@
         document.getElementById("violations").textContent = violations;
         document.getElementById("message").innerHTML = warnings.join("<br>");
                 document.body.classList.add("tilt");
+                        haptic("error");
         setTimeout(function () { document.body.classList.remove("tilt"); }, 400);
       }
 
@@ -214,6 +235,7 @@
       let text = "Цена изменилась на " + change.toFixed(1) + "%. Результат: " + profit + " $";
       if (stopped) {
         text = text + " (сработал стоп-лосс)";
+        haptic("rigid");
       }
       document.getElementById("result").textContent = text;
       drawChart();
