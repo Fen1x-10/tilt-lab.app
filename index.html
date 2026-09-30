@@ -78,7 +78,7 @@
     let best = Number(localStorage.getItem("best")) || 0;
     document.getElementById("best").textContent = best;
 
-    function drawChart  () {    function haptic(kind) {
+        function haptic(kind) {
       try {
         let h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
         if (!h) {
@@ -91,7 +91,9 @@
         }
       } catch (e) {
       }
-    }      
+    }
+
+    function drawChart() {
       let canvas = document.getElementById("chart");
       let ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -99,7 +101,6 @@
       if (prices.length < 2) {
         return;
       }
-
       let min = Math.min(...prices);
       let max = Math.max(...prices);
       if (max === min) {
