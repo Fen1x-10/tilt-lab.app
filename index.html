@@ -15,12 +15,14 @@
       touch-action: manipulation;
     }
     #sellBtn { background: #f87171; }
-    button:disabled, #sellBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
+    #closeBtn { background: #fbbf24; }
+    button:disabled, #sellBtn:disabled, #closeBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
     input {
       width: 80px; padding: 6px; border-radius: 6px; border: 1px solid #444;
       background: #1b1b1b; color: white; text-align: center; font-size: 16px;
     }
-    canvas { max-width: 100%; }
+    input:disabled { opacity: 0.5; }
+    canvas { width: 100%; height: auto; display: block; }
     html, body, button, input { touch-action: manipulation; }
     @keyframes tilt {
       0%, 100% { transform: translateX(0); background: #111; }
@@ -55,7 +57,8 @@
         <li>Не рискуй больше 20% депозита в одной сделке.</li>
         <li>Не увеличивай сделку после убытка, чтобы отыграться. Это и есть тильт.</li>
       </ul>
-      <p>Оценка зависит не от прибыли, а от соблюдения правил. В сессии 10 сделок. График взят из реальной истории крипторынка, а какой это актив и когда это было, ты узнаешь в конце.</p>
+      <p>Нажми «Купить» или «Продать»: сделка откроется, и график пойдёт дальше свеча за свечой. Закрой её сам или её закроет стоп-лосс. В сессии 10 сделок, а оценка зависит не от прибыли, а от соблюдения правил.</p>
+      <p>График взят из реальной истории крипторынка. Какой это актив и когда это было, ты узнаешь в конце.</p>
       <p class="note">Это учебная игра без реальных денег. Прошлые результаты не гарантируют будущих. Игра не является инвестиционной рекомендацией.</p>
       <div style="text-align:center;"><button onclick="closeWelcome()">Начать</button></div>
     </div>
@@ -64,7 +67,8 @@
   <h1>Tilt Lab</h1>
   <p>Депозит: <span id="balance">1000</span> $</p>
   <p>Цена актива: <span id="price">100.0</span></p>
-  <canvas id="chart" width="320" height="160" style="background:#1b1b1b; border-radius:8px;"></canvas>
+  <canvas id="chart" width="640" height="360" style="background:#1b1b1b; border-radius:8px;"></canvas>
+  <p id="live" style="min-height:1.2em; color:#e5e7eb; font-size:14px;"></p>
   <p id="summary" style="font-weight:bold;"></p>
   <p id="reveal" style="color:#facc15;"></p>
   <p id="review" style="color:tomato;"></p>
@@ -73,8 +77,9 @@
   <p>Сделок осталось: <span id="tradesLeft">10</span></p>
   <p>Нарушений правил: <span id="violations">0</span></p>
   <p>Лучшая оценка дисциплины: <span id="best">0</span></p>
-  <button id="buyBtn" onclick="trade('buy')">Купить (жду роста)</button>
-  <button id="sellBtn" onclick="trade('sell')">Продать (жду падения)</button>
+  <button id="buyBtn" onclick="openPosition('buy')">Купить (жду роста)</button>
+  <button id="sellBtn" onclick="openPosition('sell')">Продать (жду падения)</button>
+  <button id="closeBtn" onclick="closeManual()" disabled>Закрыть сделку</button>
   <button onclick="restart()">Начать заново</button>
   <p id="message" style="color:tomato;"></p>
   <p id="result"></p>
@@ -88,6 +93,7 @@
   </p>
 
   <script>
+    // ---------- Защита от приближения двойным тапом ----------
     let lastTouchEnd = 0;
     document.addEventListener("touchend", function (e) {
       let now = Date.now();
@@ -105,6 +111,7 @@
       e.preventDefault();
     });
 
+    // ---------- Вибрация в Telegram ----------
     function haptic(kind) {
       try {
         let h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
@@ -120,6 +127,7 @@
       }
     }
 
+    // ---------- Экран приветствия ----------
     function showWelcome() {
       document.getElementById("welcome").style.display = "flex";
     }
@@ -140,57 +148,72 @@
     } catch (e) {
     }
 
-    const STEP = 4;
-    const HISTORY = 20;
-    const SESSION_TRADES = 10;
+    // ---------- Настройки игры ----------
+    const VISIBLE = 40;          // сколько свечей видно на графике
+    const SESSION_TRADES = 10;   // сделок в одной сессии
+    const MAX_CANDLES = 10;      // сколько свечей максимум живёт одна сделка
+    let TICK_MS = 400;           // сколько миллисекунд "рисуется" одна свеча
 
+    // ---------- Состояние игры ----------
     let balance = 1000;
     let price = 100;
-    let prices = [100];
     let violations = 0;
-    let tradesLeft = 10;
+    let tradesLeft = SESSION_TRADES;
     let lastProfit = 0;
     let lastAmount = 0;
     let noStopCount = 0;
     let bigTradeCount = 0;
     let revengeCount = 0;
-    let startCursor = 0;
-    let cursor = 0;
+    let startCursor = 0;         // с какой свечи истории началась сессия
+    let cursor = 0;              // номер последней завершённой свечи
+    let basePrice = 1;           // цена, которую мы считаем за 100
+    let position = null;         // открытая сделка (или null, если сделки нет)
+    let anim = null;             // свеча, которая сейчас "рисуется"
+    let rafId = null;
+    let marks = [];              // точки входа и выхода на графике
     let sessionStart = Date.now();
     let best = Number(localStorage.getItem("best")) || 0;
     document.getElementById("best").textContent = best;
 
+    // ---------- Данные ----------
+    function candleAt(i) {
+      let r = RAW[i];
+      return {
+        o: 100 * Number(r[1]) / basePrice,
+        h: 100 * Number(r[2]) / basePrice,
+        l: 100 * Number(r[3]) / basePrice,
+        c: 100 * Number(r[4]) / basePrice
+      };
+    }
+
+    function setControls(mode) {
+      let idle = (mode === "idle");
+      let open = (mode === "open");
+      document.getElementById("buyBtn").disabled = !idle;
+      document.getElementById("sellBtn").disabled = !idle;
+      document.getElementById("closeBtn").disabled = !open;
+      document.getElementById("amount").disabled = !idle;
+      document.getElementById("stop").disabled = !idle;
+    }
+
     function startHistory() {
-      let needed = (HISTORY - 1) * STEP + SESSION_TRADES * STEP + 2;
+      let needed = VISIBLE + SESSION_TRADES * (MAX_CANDLES + 1) + 2;
       if (typeof RAW === "undefined" || RAW.length < needed) {
         document.getElementById("message").textContent = "Не найден файл data.js с историческими данными";
-        document.getElementById("buyBtn").disabled = true;
-        document.getElementById("sellBtn").disabled = true;
+        setControls("ended");
         return;
       }
 
-      let minCursor = (HISTORY - 1) * STEP;
-      let maxCursor = RAW.length - 1 - SESSION_TRADES * STEP;
+      let minCursor = VISIBLE - 1;
+      let maxCursor = RAW.length - 1 - SESSION_TRADES * (MAX_CANDLES + 1) - 1;
       startCursor = minCursor + Math.floor(Math.random() * (maxCursor - minCursor + 1));
       cursor = startCursor;
-      let basePrice = Number(RAW[cursor][4]);
-
-      prices = [];
-      for (let k = HISTORY - 1; k >= 0; k--) {
-        let index = cursor - k * STEP;
-        prices.push(100 * Number(RAW[index][4]) / basePrice);
-      }
+      basePrice = Number(RAW[cursor][4]);
       price = 100;
+      marks = [];
 
       document.getElementById("price").textContent = price.toFixed(1);
       drawChart();
-    }
-
-    function nextChange() {
-      let from = Number(RAW[cursor][4]);
-      cursor = cursor + STEP;
-      let to = Number(RAW[cursor][4]);
-      return (to / from - 1) * 100;
     }
 
     function revealData() {
@@ -213,39 +236,354 @@
       setTimeout(function () { document.body.classList.remove("tilt"); }, 400);
     }
 
+    // ---------- График: японские свечи ----------
     function drawChart() {
       let canvas = document.getElementById("chart");
       let ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let W = canvas.width;
+      let H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
 
-      if (prices.length < 2) {
+      if (typeof RAW === "undefined" || cursor < VISIBLE - 1) {
         return;
       }
 
-      let min = Math.min(...prices);
-      let max = Math.max(...prices);
-      if (max === min) {
-        max = min + 1;
+      // 1. Какие свечи показываем: завершённые и (если идёт сделка) одна растущая
+      let done = anim ? VISIBLE - 1 : VISIBLE;
+      let firstIndex = cursor - done + 1;
+      let list = [];
+      for (let i = firstIndex; i <= cursor; i++) {
+        list.push(candleAt(i));
       }
+      if (anim) {
+        list.push(anim.view);
+      }
+      let lastPrice = list[list.length - 1].c;
 
-      ctx.beginPath();
-      for (let i = 0; i < prices.length; i++) {
-        let x = 10 + i * (canvas.width - 20) / (prices.length - 1);
-        let y = canvas.height - 10 - (prices[i] - min) / (max - min) * (canvas.height - 20);
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
+      // 2. Линии: вход и стоп-лосс
+      let lines = [];
+      if (position) {
+        lines.push({ p: position.entry, color: "#9ca3af", label: "Вход" });
+        if (position.stopPrice !== null) {
+          lines.push({ p: position.stopPrice, color: "#f87171", label: "Стоп" });
+        }
+      } else {
+        let s = Number(document.getElementById("stop").value);
+        if (s > 0) {
+          lines.push({ p: lastPrice * (1 - s / 100), color: "rgba(248,113,113,0.65)", label: "Стоп (Купить)" });
+          lines.push({ p: lastPrice * (1 + s / 100), color: "rgba(248,113,113,0.65)", label: "Стоп (Продать)" });
         }
       }
-      ctx.strokeStyle = "#4ade80";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+
+      // 3. Масштаб по вертикали: чтобы влезли и свечи, и линии
+      let lo = Infinity;
+      let hi = -Infinity;
+      list.forEach(function (c) {
+        lo = Math.min(lo, c.l);
+        hi = Math.max(hi, c.h);
+      });
+      lines.forEach(function (ln) {
+        lo = Math.min(lo, ln.p);
+        hi = Math.max(hi, ln.p);
+      });
+      if (hi - lo < 1e-9) {
+        hi = lo + 1;
+      }
+      let margin = (hi - lo) * 0.06;
+      lo = lo - margin;
+      hi = hi + margin;
+
+      let left = 8;
+      let right = 8;
+      let top = 12;
+      let bottom = 12;
+      let plotW = W - left - right;
+      let plotH = H - top - bottom;
+      let slot = plotW / VISIBLE;
+      let bodyW = slot * 0.65;
+
+      function yOf(p) {
+        return top + (hi - p) / (hi - lo) * plotH;
+      }
+
+      // 4. Свечи
+      list.forEach(function (c, k) {
+        let x = left + (k + 0.5) * slot;
+        let color = c.c >= c.o ? "#4ade80" : "#f87171";
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, yOf(c.h));
+        ctx.lineTo(x, yOf(c.l));
+        ctx.stroke();
+        let yTop = yOf(Math.max(c.o, c.c));
+        let yBottom = yOf(Math.min(c.o, c.c));
+        ctx.fillRect(x - bodyW / 2, yTop, bodyW, Math.max(1.5, yBottom - yTop));
+      });
+
+      // 5. Линии входа и стопа
+      ctx.font = "20px sans-serif";
+      ctx.textAlign = "left";
+      lines.forEach(function (ln) {
+        let y = yOf(ln.p);
+        ctx.setLineDash([8, 6]);
+        ctx.strokeStyle = ln.color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(W - right, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = ln.color;
+        ctx.fillText(ln.label, left + 4, y - 5);
+      });
+
+      // 6. Точки входа и выхода
+      marks.forEach(function (m) {
+        let k = m.i - firstIndex;
+        if (k < 0 || k >= VISIBLE) {
+          return;
+        }
+        ctx.beginPath();
+        ctx.arc(left + (k + 0.5) * slot, yOf(m.p), 6, 0, Math.PI * 2);
+        ctx.fillStyle = m.color;
+        ctx.fill();
+        ctx.strokeStyle = "#111";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
     }
 
+    // ---------- Анимация свечи ----------
+    function startCandleAnim(ts) {
+      let c = candleAt(cursor + 1);
+      let pts;
+      if (c.c >= c.o) {
+        pts = [c.o, c.l, c.h, c.c];
+      } else {
+        pts = [c.o, c.h, c.l, c.c];
+      }
+      anim = {
+        candle: c,
+        pts: pts,
+        start: ts,
+        p: c.o,
+        view: { o: c.o, h: c.o, l: c.o, c: c.o }
+      };
+    }
+
+    function frame(ts) {
+      rafId = null;
+      if (!position) {
+        return;
+      }
+      if (!anim) {
+        startCandleAnim(ts);
+      }
+
+      let t = Math.min(1, (ts - anim.start) / TICK_MS);
+      let pts = anim.pts;
+      let seg = Math.min(2, Math.floor(t * 3));
+      let p = pts[seg] + (pts[seg + 1] - pts[seg]) * (t * 3 - seg);
+
+      let runH = Math.max(pts[0], p);
+      let runL = Math.min(pts[0], p);
+      for (let j = 1; j <= seg; j++) {
+        runH = Math.max(runH, pts[j]);
+        runL = Math.min(runL, pts[j]);
+      }
+
+      anim.p = p;
+      anim.view = { o: anim.candle.o, h: runH, l: runL, c: p };
+
+      if (position.stopPrice !== null) {
+        let hit = (position.dir === "buy" && runL <= position.stopPrice) ||
+                  (position.dir === "sell" && runH >= position.stopPrice);
+        if (hit) {
+          closePosition("stop", position.stopPrice);
+          return;
+        }
+      }
+
+      updateLive(p);
+      drawChart();
+
+      if (t >= 1) {
+        let closePrice = anim.candle.c;
+        cursor = cursor + 1;
+        anim = null;
+        position.candles = position.candles + 1;
+        if (position.candles >= MAX_CANDLES) {
+          closePosition("time", closePrice);
+          return;
+        }
+      }
+
+      rafId = requestAnimationFrame(frame);
+    }
+
+    function pnlPercent(dir, entry, exit) {
+      if (dir === "buy") {
+        return (exit - entry) / entry * 100;
+      }
+      return (entry - exit) / entry * 100;
+    }
+
+    function updateLive(p) {
+      let pnl = pnlPercent(position.dir, position.entry, p);
+      let now = Math.round(position.amount * pnl / 100);
+      let name = position.dir === "buy" ? "Купить" : "Продать";
+      document.getElementById("live").textContent =
+        "Сделка: " + name + " " + position.amount + " $ · вход " + position.entry.toFixed(1) +
+        " · сейчас " + p.toFixed(1) + " · " + (now >= 0 ? "+" : "") + now + " $";
+      document.getElementById("price").textContent = p.toFixed(1);
+    }
+
+    // ---------- Открытие и закрытие сделки ----------
+    function openPosition(direction) {
+      if (position || typeof RAW === "undefined") {
+        return;
+      }
+
+      let amount = Number(document.getElementById("amount").value);
+      let stop = Number(document.getElementById("stop").value);
+
+      if (amount <= 0) {
+        document.getElementById("message").textContent = "Сумма должна быть больше нуля";
+        return;
+      }
+
+      document.getElementById("message").textContent = "";
+
+      if (amount > balance) {
+        amount = balance;
+      }
+
+      let warnings = [];
+      haptic("light");
+
+      if (tradesLeft === SESSION_TRADES && Date.now() - sessionStart < 2000) {
+        document.getElementById("achievement4").textContent = "🏆 Ачивка: Быстрейшая рука Дикого Запада (сделка за 2 секунды)";
+      }
+
+      if (stop <= 0) {
+        noStopCount = noStopCount + 1;
+        warnings.push("⚠ Нарушение: сделка без стоп-лосса!");
+        document.getElementById("achievement2").textContent = "🏆 Ачивка: Стоп? Не слышал!";
+      }
+
+      if (amount > balance * 0.2) {
+        bigTradeCount = bigTradeCount + 1;
+        warnings.push("⚠ Нарушение: сделка больше 20% депозита!");
+      }
+
+      if (lastProfit < 0 && amount > lastAmount) {
+        revengeCount = revengeCount + 1;
+        warnings.push("⚠ Нарушение: увеличил сделку после убытка (реванш)!");
+      }
+
+      if (warnings.length > 0) {
+        violations = violations + warnings.length;
+        document.getElementById("violations").textContent = violations;
+        document.getElementById("message").innerHTML = warnings.join("<br>");
+        haptic("error");
+        shake();
+      }
+
+      let entry = candleAt(cursor).c;
+      let stopPrice = null;
+      if (stop > 0) {
+        if (direction === "buy") {
+          stopPrice = entry * (1 - stop / 100);
+        } else {
+          stopPrice = entry * (1 + stop / 100);
+        }
+      }
+
+      position = {
+        dir: direction,
+        amount: amount,
+        stop: stop,
+        entry: entry,
+        stopPrice: stopPrice,
+        candles: 0
+      };
+      marks = [{ i: cursor, p: entry, color: "#ffffff" }];
+      anim = null;
+
+      document.getElementById("result").textContent = "";
+      setControls("open");
+      updateLive(entry);
+      drawChart();
+      rafId = requestAnimationFrame(frame);
+    }
+
+    function closeManual() {
+      if (!position) {
+        return;
+      }
+      let p = anim ? anim.p : candleAt(cursor).c;
+      closePosition("manual", p);
+    }
+
+    function closePosition(reason, exitPrice) {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (anim) {
+        cursor = cursor + 1;
+        anim = null;
+      }
+
+      let pos = position;
+      position = null;
+
+      let pnl = pnlPercent(pos.dir, pos.entry, exitPrice);
+      let profit = Math.round(pos.amount * pnl / 100);
+      if (profit < -pos.amount) {
+        profit = -pos.amount;
+      }
+
+      marks.push({ i: cursor, p: exitPrice, color: "#facc15" });
+
+      balance = balance + profit;
+      lastProfit = profit;
+      lastAmount = pos.amount;
+      tradesLeft = tradesLeft - 1;
+      price = candleAt(cursor).c;
+
+      document.getElementById("balance").textContent = balance;
+      document.getElementById("price").textContent = price.toFixed(1);
+      document.getElementById("tradesLeft").textContent = tradesLeft;
+      document.getElementById("live").textContent = "";
+
+      let reasonText = "Время сделки вышло";
+      if (reason === "stop") {
+        reasonText = "Сработал стоп-лосс";
+        haptic("rigid");
+      } else if (reason === "manual") {
+        reasonText = "Сделка закрыта вручную";
+      }
+      document.getElementById("result").textContent =
+        reasonText + ". Результат: " + (profit >= 0 ? "+" : "") + profit + " $";
+
+      setControls("idle");
+      drawChart();
+
+      if (balance <= 0) {
+        document.getElementById("achievement").textContent = "🏆 Ачивка: Слил всё!";
+      }
+
+      if (balance <= 0 || tradesLeft === 0) {
+        endSession();
+      }
+    }
+
+    // ---------- Конец сессии ----------
     function endSession() {
-      document.getElementById("buyBtn").disabled = true;
-      document.getElementById("sellBtn").disabled = true;
+      setControls("ended");
 
       let score = Math.max(0, 100 - violations * 25);
       if (score > best) {
@@ -283,103 +621,18 @@
       }
     }
 
-    function trade(direction) {
-      let amount = Number(document.getElementById("amount").value);
-      let stop = Number(document.getElementById("stop").value);
-
-      if (amount <= 0) {
-        document.getElementById("message").textContent = "Сумма должна быть больше нуля";
-        return;
-      }
-
-      document.getElementById("message").textContent = "";
-
-      if (amount > balance) {
-        amount = balance;
-      }
-
-      let warnings = [];
-      haptic("light");
-
-      if (tradesLeft === 10 && Date.now() - sessionStart < 2000) {
-        document.getElementById("achievement4").textContent = "🏆 Ачивка: Быстрейшая рука Дикого Запада (сделка за 2 секунды)";
-      }
-
-      if (stop <= 0) {
-        noStopCount = noStopCount + 1;
-        warnings.push("⚠ Нарушение: сделка без стоп-лосса!");
-        document.getElementById("achievement2").textContent = "🏆 Ачивка: Стоп? Не слышал!";
-      }
-
-      if (amount > balance * 0.2) {
-        bigTradeCount = bigTradeCount + 1;
-        warnings.push("⚠ Нарушение: сделка больше 20% депозита!");
-      }
-
-      if (lastProfit < 0 && amount > lastAmount) {
-        revengeCount = revengeCount + 1;
-        warnings.push("⚠ Нарушение: увеличил сделку после убытка (реванш)!");
-      }
-
-      if (warnings.length > 0) {
-        violations = violations + warnings.length;
-        document.getElementById("violations").textContent = violations;
-        document.getElementById("message").innerHTML = warnings.join("<br>");
-        haptic("error");
-        shake();
-      }
-
-      let change = nextChange();
-
-      let move = change;
-      if (direction === "sell") {
-        move = -change;
-      }
-
-      let stopped = false;
-      if (stop > 0 && move < -stop) {
-        move = -stop;
-        stopped = true;
-        haptic("rigid");
-      }
-
-      let profit = Math.round(amount * move / 100);
-
-      price = price * (1 + change / 100);
-      prices.push(price);
-      if (prices.length > HISTORY) {
-        prices.shift();
-      }
-
-      balance = balance + profit;
-      lastProfit = profit;
-      lastAmount = amount;
-      tradesLeft = tradesLeft - 1;
-
-      document.getElementById("balance").textContent = balance;
-      document.getElementById("price").textContent = price.toFixed(1);
-      document.getElementById("tradesLeft").textContent = tradesLeft;
-
-      let text = "Цена изменилась на " + change.toFixed(1) + "%. Результат: " + profit + " $";
-      if (stopped) {
-        text = text + " (сработал стоп-лосс)";
-      }
-      document.getElementById("result").textContent = text;
-      drawChart();
-
-      if (balance <= 0) {
-        document.getElementById("achievement").textContent = "🏆 Ачивка: Слил всё!";
-      }
-
-      if (balance <= 0 || tradesLeft === 0) {
-        endSession();
-      }
-    }
-
     function restart() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      position = null;
+      anim = null;
+      marks = [];
+
       balance = 1000;
       violations = 0;
-      tradesLeft = 10;
+      tradesLeft = SESSION_TRADES;
       lastProfit = 0;
       lastAmount = 0;
       noStopCount = 0;
@@ -387,8 +640,9 @@
       revengeCount = 0;
       sessionStart = Date.now();
       document.getElementById("balance").textContent = balance;
-      document.getElementById("tradesLeft").textContent = "10";
+      document.getElementById("tradesLeft").textContent = SESSION_TRADES;
       document.getElementById("violations").textContent = "0";
+      document.getElementById("live").textContent = "";
       document.getElementById("result").textContent = "";
       document.getElementById("achievement").textContent = "";
       document.getElementById("achievement2").textContent = "";
@@ -398,10 +652,12 @@
       document.getElementById("summary").textContent = "";
       document.getElementById("reveal").textContent = "";
       document.getElementById("review").innerHTML = "";
-      document.getElementById("buyBtn").disabled = false;
-      document.getElementById("sellBtn").disabled = false;
+      setControls("idle");
       startHistory();
     }
+
+    // Пока сделки нет, линия стопа на графике двигается вместе с полем "Стоп-лосс"
+    document.getElementById("stop").addEventListener("input", drawChart);
 
     startHistory();
   </script>
