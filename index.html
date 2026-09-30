@@ -27,6 +27,7 @@
   <p>Цена актива: <span id="price">100.0</span></p>
   <canvas id="chart" width="320" height="160" style="background:#1b1b1b; border-radius:8px;"></canvas>
   <p id="summary" style="font-weight:bold;"></p>
+  <p id="review" style="color:tomato;"></p>
   <p>Размер сделки: <input id="amount" type="number" value="100"> $</p>
   <p>Стоп-лосс: <input id="stop" type="number" value="2"> %</p>
   <p>Сделок осталось: <span id="tradesLeft">10</span></p>
@@ -50,6 +51,9 @@
     let lastProfit = 0;
     let lastAmount = 0;
     let trend = 0;
+    let noStopCount = 0;
+    let bigTradeCount = 0;
+    let revengeCount = 0;
     let best = Number(localStorage.getItem("best")) || 0;
     document.getElementById("best").textContent = best;
 
@@ -102,6 +106,14 @@
       }
       document.getElementById("summary").textContent = text;
 
+      if (violations > 0) {
+        document.getElementById("review").innerHTML =
+          "Разбор ошибок:<br>" +
+          "Без стоп-лосса: " + noStopCount + "<br>" +
+          "Сделка больше 20% депозита: " + bigTradeCount + "<br>" +
+          "Реванш после убытка: " + revengeCount;
+      }
+
       if (violations === 0) {
         document.getElementById("achievement3").textContent = "🏆 Ачивка: Хладнокровный (сессия без нарушений)";
       }
@@ -125,15 +137,18 @@
       let warnings = [];
 
       if (stop <= 0) {
+        noStopCount = noStopCount + 1;
         warnings.push("⚠ Нарушение: сделка без стоп-лосса!");
         document.getElementById("achievement2").textContent = "🏆 Ачивка: Стоп? Не слышал!";
       }
 
       if (amount > balance * 0.2) {
+        bigTradeCount = bigTradeCount + 1;
         warnings.push("⚠ Нарушение: сделка больше 20% депозита!");
       }
 
       if (lastProfit < 0 && amount > lastAmount) {
+        revengeCount = revengeCount + 1;
         warnings.push("⚠ Нарушение: увеличил сделку после убытка (реванш)!");
       }
 
@@ -199,6 +214,9 @@
       lastProfit = 0;
       lastAmount = 0;
       trend = 0;
+      noStopCount = 0;
+      bigTradeCount = 0;
+      revengeCount = 0;
       document.getElementById("balance").textContent = balance;
       document.getElementById("price").textContent = "100.0";
       document.getElementById("tradesLeft").textContent = "10";
@@ -209,6 +227,7 @@
       document.getElementById("achievement3").textContent = "";
       document.getElementById("message").textContent = "";
       document.getElementById("summary").textContent = "";
+      document.getElementById("review").innerHTML = "";
       document.getElementById("buyBtn").disabled = false;
       document.getElementById("sellBtn").disabled = false;
       drawChart();
